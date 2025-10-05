@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>LED Controller BLE</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #111;
+      color: #eee;
+      padding: 20px;
+    }
+    #log {
+      background: #222;
+      border: 1px solid #444;
+      padding: 10px;
+      height: 200px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      margin-top: 10px;
+    }
+    button, select, input[type=color] {
+      background: #444;
+      color: #eee;
+      padding: 8px 12px;
+      border: none;
+      cursor: pointer;
+      margin: 5px 0;
+    }
+    button:hover, select:hover, input[type=color]:hover {
+      background: #666;
+    }
+    canvas {
+      background: #000;
+      display: block;
+      margin: 10px 0;
+      border: 1px solid #333;
+    }
+  </style>
+</head>
+<body>
+  <button id="connect">Connect to Device</button>
+  <select id="effect">
+    <option value="rainbow">🌈 Rainbow</option>
+    <option value="chase">🌊 Theater Chase</option>
+    <option value="solid">💡 Solid Color</option>
+  </select>
+  <input type="color" id="colorPicker" value="#ff0000" style="display:none;">
+  <canvas id="preview" width="512" height="50"></canvas>
+  <div id="log"></div>
+
+  <script>
+    const SERVICE_UUID = "5f980001-011a-4d81-840f-619f447ae9d0";
+    const WRITE_CHAR_UUID = "5f980002-011a-4d81-840f-619f447ae9d0";
+    const READ_CHAR_UUID = "5f980003-011a-4d81-840f-619f447ae9d0";
+    const NUM_LEDS = 256;
+    const CHUNK_SIZES = [80, 80, 80, 16];
+    const CHUNK_OFFSETS = [0, 80, 160, 240];
+
+    let writeCharacteristic;
+    let readCharacteristic;
+    let running = false;
+
+    // --- Logging helper ---
+    function log(msg) {
+      const logDiv = document.getElementById("log");
+      logDiv.textContent += msg + "\n";
+      logDiv.scrollTop = logDiv.scrollHeight;
+      console.log(msg);
+    }
+
+    // --- Color helpers ---
+    function hsvToRgb(h, s, v) {
+      let i = Math.floor(h * 6);
+      let f = h * 6 - i;
+      let p = v * (1 - s);
+      let q = v * (1 - f * s);
+      let t = v * (1 - (1 - f) * s);
+      let r, g, b;
+      switch (i % 6) {
+        case 0: r = v; g = t; b = p; break;
+        case 1: r = q; g = v; b = p; break;
+        case 2: r = p; g = v; b = t; break;
+        case 3: r = p; g = q; b = v; break;
+        case 4: r = t; g = p; b = v; break;
+        case 5: r = v; g = p; b = q; break;
+      }
+      return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+    }
+
+    // --- Effect Generators ---
+    function createRainbowFrame(shift) {
+      let frame = [];
+      for (let i = 0; i < NUM_LEDS; i++) {
+        let hue = ((i + shift) % NUM_LEDS) / NUM_LEDS;
+        frame.push(...hsvToRgb(hue, 1.0, 1.0));
+      }
+      return frame;
+    }
+
+    function createChaseFrame(shift) {
+      let frame = [];
+      for (let i = 0; i < NUM_LEDS; i++) {
+        if ((i + shift) % 10 < 3) {
+          frame.push(255, 255, 255);
+        } else {
+          frame.push(0, 0, 0);
+        }
+      }
+      return frame;
+    }
+
+    function createSolidFrame(colorHex) {
+      let rgb = hexToRgb(colorHex);
+      let frame = [];
+      for (let i = 0; i < NUM_LEDS; i++) {
+        frame.push(rgb.r, rgb.g, rgb.b);
+      }
+      return frame;
+    }
+
+    function hexToRgb(hex) {
+      let bigint = parseInt(hex.slice(1), 16);
+      return {
+        r: (bigint >> 16) & 255,
+        g: (bigint >> 8) & 255,
+        b: bigint & 255
+      };
+    }
+
+    // --- Frame Split ---
+    function splitFrame(frame) {
+      let packets = [];
+      for (let i = 0; i < CHUNK_SIZES.length; i++) {
+        let offset = CHUNK_OFFSETS[i];
+        let count = CHUNK_SIZES[i];
+        let start = offset * 3;
+        let end = start + count * 3;
+        let rgbChunk = frame.slice(start, end);
+        let trigger = (i === CHUNK_SIZES.length - 1) ? 1 : 0;
+        let packet = [1, trigger, offset, count, ...rgbChunk];
+        packets.push(new Uint8Array(packet));
+      }
+      return packets;
+    }
+
+    // --- Visualization ---
+    function drawPreview(frame) {
+      let canvas = document.getElementById("preview");
+      let ctx = canvas.getContext("2d");
+      let w = canvas.width / NUM_LEDS;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < NUM_LEDS; i++) {
+        ctx.fillStyle = `rgb(${frame[i*3]}, ${frame[i*3+1]}, ${frame[i*3+2]})`;
+        ctx.fillRect(i * w, 0, w, canvas.height);
+      }
+    }
+
+    // --- Loop ---
+    async function runEffectLoop(effect) {
+      let shift = 0;
+      running = true;
+      while (running) {
+        let frame;
+        if (effect === "rainbow") {
+          frame = createRainbowFrame(shift);
+        } else if (effect === "chase") {
+          frame = createChaseFrame(shift);
+        } else if (effect === "solid") {
+          frame = createSolidFrame(document.getElementById("colorPicker").value);
+        }
+        drawPreview(frame);
+
+        if (writeCharacteristic) {
+          let packets = splitFrame(frame);
+          for (let pkt of packets) {
+            await writeCharacteristic.writeValue(pkt);
+          }
+        }
+
+        shift = (shift + 1) % NUM_LEDS;
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+
+    // --- UI ---
+    document.getElementById("effect").addEventListener("change", (e) => {
+      if (e.target.value === "solid") {
+        document.getElementById("colorPicker").style.display = "inline";
+      } else {
+        document.getElementById("colorPicker").style.display = "none";
+      }
+      running = false;
+      setTimeout(() => runEffectLoop(e.target.value), 200);
+    });
+
+    document.getElementById("connect").addEventListener("click", async () => {
+      try {
+        log("Requesting device...");
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [SERVICE_UUID] }]
+        });
+
+        log("Connecting...");
+        const server = await device.gatt.connect();
+
+        log("Getting service...");
+        const service = await server.getPrimaryService(SERVICE_UUID);
+
+        log("Getting characteristics...");
+        writeCharacteristic = await service.getCharacteristic(WRITE_CHAR_UUID);
+        readCharacteristic = await service.getCharacteristic(READ_CHAR_UUID);
+
+        await readCharacteristic.startNotifications();
+        readCharacteristic.addEventListener("characteristicvaluechanged", (event) => {
+          const value = event.target.value;
+          const bytes = new Uint8Array(value.buffer);
+          log("Notification: " + Array.from(bytes).map(b => b.toString(16).padStart(2,"0")).join(" "));
+        });
+
+        log("Connected. Starting default effect (rainbow)...");
+        runEffectLoop("rainbow");
+      } catch (error) {
+        log("Error: " + error);
+      }
+    });
+  </script>
+</body>
+</html>

@@ -129,6 +129,8 @@
       <div class="slide"><canvas id="twinkle" width="8" height="32"></canvas><p>❄️ Twinkle</p></div>
       <div class="slide"><canvas id="strobe" width="8" height="32"></canvas><p>⚡ Strobe</p></div>
       <div class="slide"><canvas id="gradient" width="8" height="32"></canvas><p>🌅 Gradient</p></div>
+      <div class="slide"><canvas id="snow" width="8" height="32"></canvas><p>❄️ Snowfall</p></div>
+      <div class="slide"><canvas id="rainup" width="8" height="32"></canvas><p>🌈⬆️ Color Rain Up</p></div>
     </div>
   </div>
   <div class="nav"></div>
@@ -148,7 +150,7 @@
     let currentEffectIndex = 0;
     const slides = document.querySelector(".slides");
     const nav = document.querySelector(".nav");
-    const effects = ["rainbow","chase","solid","fire","twinkle","strobe","gradient"];
+    const effects = ["rainbow","chase","solid","fire","twinkle","strobe","gradient","snow","rainup"];
 
     // logging
     function log(msg) {
@@ -236,6 +238,63 @@
       return frame;
     }
 
+    let snowState = Array(WIDTH).fill().map(() => Math.floor(Math.random() * HEIGHT));
+
+    function frameSnow() {
+      let frame = [];
+      // clear frame
+      for (let y = 0; y < HEIGHT; y++) {
+        for (let x = 0; x < WIDTH; x++) {
+          frame.push(0, 0, 20); // dark blue background
+        }
+      }
+      // draw snow
+      for (let x = 0; x < WIDTH; x++) {
+        let y = snowState[x];
+        let idx = (y * WIDTH + x) * 3;
+        frame[idx] = 255; // white
+        frame[idx + 1] = 255;
+        frame[idx + 2] = 255;
+
+        // move snow down
+        snowState[x] = (y + 1) % HEIGHT;
+      }
+      return frame;
+    }
+
+    // --- effect state ---
+    let rainUpState = Array(WIDTH).fill().map(() => ({
+      y: Math.floor(Math.random()*HEIGHT),
+      hue: Math.random()
+    }));
+
+    // --- new frame generator ---
+    function frameRainUp(){
+      let frame=[];
+      // background
+      for(let i=0;i<NUM_LEDS;i++) frame.push(0,0,0);
+      // draw each rain drop
+      for(let x=0;x<WIDTH;x++){
+        let drop = rainUpState[x];
+        // draw head of drop
+        let idx = (drop.y*WIDTH + x)*3;
+        let [r,g,b] = hsvToRgb(drop.hue,1,1);
+        frame[idx]=r; frame[idx+1]=g; frame[idx+2]=b;
+        // draw faded tail below head
+        if(drop.y+1<HEIGHT){
+          let idx2=((drop.y+1)*WIDTH+x)*3;
+          frame[idx2]=r*0.4; frame[idx2+1]=g*0.4; frame[idx2+2]=b*0.4;
+        }
+        // move upward
+        drop.y--;
+        if(drop.y<0){
+          drop.y=HEIGHT-1;
+          drop.hue=Math.random();
+        }
+      }
+      return frame;
+    }
+
     // draw
     function drawFrame(canvasId, frame){
       let canvas=document.getElementById(canvasId);
@@ -302,6 +361,8 @@
           case "twinkle": frame=frameTwinkle(); break;
           case "strobe": frame=frameStrobe(on); on=!on; break;
           case "gradient": frame=frameGradient(shift); break;
+          case "snow": frame=frameSnow(); break;
+          case "rainup": frame=frameRainUp(); break; 
         }
         drawFrame(f,frame);
         await sendFrameBLE(frame);

@@ -3,7 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <title>LED Controller BLE</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
+    :root {
+      --primary: #00d4ff;
+    }
     body {
       margin: 0;
       font-family: "Segoe UI", sans-serif;
@@ -13,38 +17,100 @@
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
-      padding: 20px;
+      padding: 10px;
     }
     h1 {
       margin-bottom: 10px;
       font-weight: 500;
-      color: #00d4ff;
+      color: var(--primary);
+      font-size: clamp(1.2rem, 5vw, 1.8rem);
     }
-    .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 15px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
     button {
-      background: #1e1e1e; border: 1px solid #333;
-      border-radius: 8px; padding: 10px 16px;
-      color: #eee; font-size: 14px;
-      cursor: pointer; transition: all 0.2s;
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px 18px;
+      color: #eee;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex: 1;
+      min-width: 160px;
+      max-width: 200px;
     }
     button:hover { background: #333; }
     #carousel {
-      width: 300px; height: 400px; position: relative;
-      overflow: hidden; border-radius: 12px; border: 1px solid #333;
+      width: 100%;
+      max-width: 400px;
+      aspect-ratio: 3/4;
+      position: relative;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid #333;
       background: #000;
     }
-    .slides { display: flex; transition: transform 0.4s ease; height: 100%; }
-    .slide { min-width: 300px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    canvas { background: #000; border-radius: 8px; border: 1px solid #333; }
-    #log {
-      margin-top: 20px; background: #1e1e1e;
-      padding: 10px; border-radius: 8px;
-      width: 90%; max-width: 600px; height: 150px;
-      overflow-y: auto; font-family: monospace; font-size: 13px; border: 1px solid #333;
+    .slides {
+      display: flex;
+      transition: transform 0.4s ease;
+      height: 100%;
     }
-    .nav { margin-top: 10px; display: flex; justify-content: center; gap: 20px; }
-    .dot { width: 12px; height: 12px; border-radius: 50%; background: #555; cursor: pointer; }
-    .dot.active { background: #00d4ff; }
+    .slide {
+      flex: 0 0 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+      box-sizing: border-box;
+    }
+    canvas {
+      background: #000;
+      border-radius: 8px;
+      border: 1px solid #333;
+      width: 60%;
+      height: auto;
+      max-height: 80%;
+    }
+    .slide p {
+      margin-top: 8px;
+      font-size: 1rem;
+    }
+    #log {
+      margin-top: 15px;
+      background: #1e1e1e;
+      padding: 8px;
+      border-radius: 8px;
+      width: 100%;
+      max-width: 400px;
+      height: 100px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 12px;
+      border: 1px solid #333;
+    }
+    .nav {
+      margin-top: 8px;
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+    }
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #555;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .dot.active { background: var(--primary); }
   </style>
 </head>
 <body>
@@ -56,13 +122,13 @@
 
   <div id="carousel">
     <div class="slides">
-      <div class="slide"><canvas id="rainbow" width="80" height="256"></canvas><p>🌈 Rainbow</p></div>
-      <div class="slide"><canvas id="chase" width="80" height="256"></canvas><p>🌊 Theater Chase</p></div>
-      <div class="slide"><canvas id="solid" width="80" height="256"></canvas><p>💡 Solid Color</p></div>
-      <div class="slide"><canvas id="fire" width="80" height="256"></canvas><p>🔥 Fire Flicker</p></div>
-      <div class="slide"><canvas id="twinkle" width="80" height="256"></canvas><p>❄️ Twinkle</p></div>
-      <div class="slide"><canvas id="strobe" width="80" height="256"></canvas><p>⚡ Strobe</p></div>
-      <div class="slide"><canvas id="gradient" width="80" height="256"></canvas><p>🎨 Gradient</p></div>
+      <div class="slide"><canvas id="rainbow" width="8" height="32"></canvas><p>🌈 Rainbow</p></div>
+      <div class="slide"><canvas id="chase" width="8" height="32"></canvas><p>🌊 Theater Chase</p></div>
+      <div class="slide"><canvas id="solid" width="8" height="32"></canvas><p>💡 Solid Color</p></div>
+      <div class="slide"><canvas id="fire" width="8" height="32"></canvas><p>🔥 Fire Flicker</p></div>
+      <div class="slide"><canvas id="twinkle" width="8" height="32"></canvas><p>❄️ Twinkle</p></div>
+      <div class="slide"><canvas id="strobe" width="8" height="32"></canvas><p>⚡ Strobe</p></div>
+      <div class="slide"><canvas id="gradient" width="8" height="32"></canvas><p>🌅 Gradient</p></div>
     </div>
   </div>
   <div class="nav"></div>
@@ -73,8 +139,7 @@
     const SERVICE_UUID = "5f980001-011a-4d81-840f-619f447ae9d0";
     const WRITE_CHAR_UUID = "5f980002-011a-4d81-840f-619f447ae9d0";
     const READ_CHAR_UUID  = "5f980003-011a-4d81-840f-619f447ae9d0";
-    const NUM_LEDS = 256;
-    const WIDTH = 8, HEIGHT = 32; // matrix layout
+    const WIDTH = 8, HEIGHT = 32, NUM_LEDS = WIDTH*HEIGHT;
     const CHUNK_SIZES = [80, 80, 80, 16];
     const CHUNK_OFFSETS = [0, 80, 160, 240];
 
@@ -85,18 +150,18 @@
     const nav = document.querySelector(".nav");
     const effects = ["rainbow","chase","solid","fire","twinkle","strobe","gradient"];
 
+    // logging
     function log(msg) {
       const div = document.getElementById("log");
       div.textContent += msg + "\n";
       div.scrollTop = div.scrollHeight;
     }
 
+    // helpers
     function hsvToRgb(h,s,v){
       let i=Math.floor(h*6);
       let f=h*6-i;
-      let p=v*(1-s);
-      let q=v*(1-f*s);
-      let t=v*(1-(1-f)*s);
+      let p=v*(1-s), q=v*(1-f*s), t=v*(1-(1-f)*s);
       let r,g,b;
       switch(i%6){
         case 0:r=v,g=t,b=p;break;
@@ -109,7 +174,7 @@
       return [Math.round(r*255),Math.round(g*255),Math.round(b*255)];
     }
 
-    // --- effect frames ---
+    // effect frames
     function frameRainbow(shift){
       let frame=[];
       for(let i=0;i<NUM_LEDS;i++){
@@ -129,13 +194,13 @@
     function frameSolid(color=[0,128,255]){
       return Array(NUM_LEDS).fill().flatMap(()=>color);
     }
-    function frameFire(t){
+    function frameFire(frameCount){
       let frame=[];
       for(let y=0;y<HEIGHT;y++){
         for(let x=0;x<WIDTH;x++){
           let idx=y*WIDTH+x;
           let intensity=Math.floor(
-            128+128*Math.sin((t/10)+(y/3)+(x/2))
+            128+128*Math.sin((frameCount/10)+(y/3)+(x/2))
           );
           let r=intensity, g=Math.floor(intensity*0.4), b=0;
           frame.push(r,g,b);
@@ -147,15 +212,14 @@
       let frame=[];
       for(let i=0;i<NUM_LEDS;i++){
         if(Math.random()<0.05) frame.push(255,255,255);
-        else frame.push(0,0,20);
+        else frame.push(0,0,30);
       }
       return frame;
     }
     function frameStrobe(on){
       let frame=[];
       for(let i=0;i<NUM_LEDS;i++){
-        if(on) frame.push(255,255,255);
-        else frame.push(0,0,0);
+        frame.push(on?255:0,on?255:0,on?255:0);
       }
       return frame;
     }
@@ -172,42 +236,38 @@
       return frame;
     }
 
-    // --- drawing matrix (8×32) ---
+    // draw
     function drawFrame(canvasId, frame){
       let canvas=document.getElementById(canvasId);
       if(!canvas) return;
       let ctx=canvas.getContext("2d");
-      let cellW=canvas.width/WIDTH;
-      let cellH=canvas.height/HEIGHT;
+      let cellW=canvas.width/WIDTH, cellH=canvas.height/HEIGHT;
       ctx.clearRect(0,0,canvas.width,canvas.height);
       for(let y=0;y<HEIGHT;y++){
         for(let x=0;x<WIDTH;x++){
           let idx=(y*WIDTH+x)*3;
-          let r=frame[idx], g=frame[idx+1], b=frame[idx+2];
-          ctx.fillStyle=`rgb(${r},${g},${b})`;
+          ctx.fillStyle=`rgb(${frame[idx]},${frame[idx+1]},${frame[idx+2]})`;
           ctx.fillRect(x*cellW,y*cellH,cellW,cellH);
         }
       }
     }
 
-    // --- BLE send ---
-    async function sendFrameBLE(frame) {
-      if (!writeCharacteristic) return;
-      for (let i=0; i<CHUNK_SIZES.length; i++) {
-        let offset = CHUNK_OFFSETS[i];
-        let count = CHUNK_SIZES[i];
-        let start = offset * 3;
-        let end = start + count * 3;
-        let rgbChunk = frame.slice(start, end);
-        let trigger = (i === CHUNK_SIZES.length - 1) ? 1 : 0;
-        let packet = [1, trigger, offset, count, ...rgbChunk];
+    // send frame
+    async function sendFrameBLE(frame){
+      if(!writeCharacteristic) return;
+      for(let i=0;i<CHUNK_SIZES.length;i++){
+        let offset=CHUNK_OFFSETS[i], count=CHUNK_SIZES[i];
+        let start=offset*3, end=start+count*3;
+        let rgbChunk=frame.slice(start,end);
+        let trigger=(i===CHUNK_SIZES.length-1)?1:0;
+        let packet=[1,trigger,offset,count,...rgbChunk];
         await writeCharacteristic.writeValue(new Uint8Array(packet));
       }
     }
 
-    // --- carousel nav ---
+    // carousel
     function updateCarousel(){
-      slides.style.transform=`translateX(-${currentEffectIndex*300}px)`;
+      slides.style.transform=`translateX(-${currentEffectIndex*100}%)`;
       document.querySelectorAll(".dot").forEach((d,i)=>d.classList.toggle("active",i===currentEffectIndex));
     }
     effects.forEach((e,i)=>{
@@ -218,22 +278,22 @@
       nav.appendChild(dot);
     });
 
+    // swipe
     let startX=0;
     slides.addEventListener("touchstart",e=>startX=e.touches[0].clientX);
     slides.addEventListener("touchend",e=>{
       let dx=e.changedTouches[0].clientX-startX;
-      if(dx>50 && currentEffectIndex>0) currentEffectIndex--;
-      if(dx<-50 && currentEffectIndex<effects.length-1) currentEffectIndex++;
+      if(dx>50&&currentEffectIndex>0) currentEffectIndex--;
+      if(dx<-50&&currentEffectIndex<effects.length-1) currentEffectIndex++;
       updateCarousel();
     });
 
-    // --- effect loop ---
+    // loop
     async function runEffects(){
       let shift=0,on=true;
       running=true;
       while(running){
-        let f=effects[currentEffectIndex];
-        let frame;
+        let f=effects[currentEffectIndex], frame;
         switch(f){
           case "rainbow": frame=frameRainbow(shift); break;
           case "chase": frame=frameChase(shift); break;
@@ -250,37 +310,32 @@
       }
     }
 
-    // --- BLE connect/disconnect ---
+    // BLE connect
     document.getElementById("connect").addEventListener("click",async()=>{
-      try {
+      try{
         log("Requesting device...");
-        device = await navigator.bluetooth.requestDevice({
-          filters: [{ services: [SERVICE_UUID] }]
-        });
+        device=await navigator.bluetooth.requestDevice({filters:[{services:[SERVICE_UUID]}]});
         log("Connecting...");
-        server = await device.gatt.connect();
-        const service = await server.getPrimaryService(SERVICE_UUID);
-        writeCharacteristic = await service.getCharacteristic(WRITE_CHAR_UUID);
-        readCharacteristic  = await service.getCharacteristic(READ_CHAR_UUID);
+        server=await device.gatt.connect();
+        const service=await server.getPrimaryService(SERVICE_UUID);
+        writeCharacteristic=await service.getCharacteristic(WRITE_CHAR_UUID);
+        readCharacteristic=await service.getCharacteristic(READ_CHAR_UUID);
 
         await readCharacteristic.startNotifications();
-        readCharacteristic.addEventListener("characteristicvaluechanged", e=>{
+        readCharacteristic.addEventListener("characteristicvaluechanged",e=>{
           const bytes=new Uint8Array(e.target.value.buffer);
-          log("Notification: " + Array.from(bytes).map(b=>b.toString(16).padStart(2,"0")).join(" "));
+          log("Notification: "+Array.from(bytes).map(b=>b.toString(16).padStart(2,"0")).join(" "));
         });
 
         log("✅ Connected. Starting effects...");
         running=false;
         runEffects();
-      } catch(err) {
-        log("Error: "+err);
-      }
+      }catch(err){ log("Error: "+err); }
     });
 
     document.getElementById("disconnect").addEventListener("click",()=>{
-      if(device && device.gatt.connected) device.gatt.disconnect();
-      log("❌ Disconnected.");
-      running=false;
+      if(device&&device.gatt.connected) device.gatt.disconnect();
+      log("❌ Disconnected."); running=false;
     });
   </script>
 </body>

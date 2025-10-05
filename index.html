@@ -3,12 +3,16 @@
 <head>
   <meta charset="UTF-8">
   <title>LED Controller BLE</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <style>
     :root {
       --primary: #00d4ff;
     }
     body {
+      padding: 0;
+      height: 100%;
+      overflow: hidden;
+      touch-action: none;
       margin: 0;
       font-family: "Segoe UI", sans-serif;
       background: #121212;
@@ -90,7 +94,7 @@
       border-radius: 8px;
       width: 100%;
       max-width: 400px;
-      height: 100px;
+      height: 50px;
       overflow-y: auto;
       font-family: monospace;
       font-size: 12px;
@@ -114,10 +118,9 @@
   </style>
 </head>
 <body>
-  <h1>LED Controller BLE</h1>
   <div class="controls">
     <button id="connect">🔗 Connect</button>
-    <button id="disconnect">❌ Disconnect</button>
+    <button id="modeSwitch" style="display:none;">🔀 Switch Mode</button>
   </div>
 
   <div id="carousel">
@@ -151,6 +154,32 @@
     const slides = document.querySelector(".slides");
     const nav = document.querySelector(".nav");
     const effects = ["rainbow","chase","solid","fire","twinkle","strobe","gradient","snow","rainup"];
+
+    const connectBtn = document.getElementById("connect");
+    const modeSwitchBtn = document.getElementById("modeSwitch");
+
+    let connected = false;
+    let selfOperation = false;
+
+    let bleQueue = Promise.resolve();
+
+    function enqueueBLEWrite(data) {
+      // chain writes sequentially
+      bleQueue = bleQueue.then(() => writeCharacteristic.writeValue(data))
+                         .catch(err => log("BLE write error: " + err));
+      return bleQueue;
+    }
+
+    function updateButtons() {
+      if (!connected) {
+        connectBtn.textContent = "🔗 Connect";
+        modeSwitchBtn.style.display = "none";
+      } else {
+        connectBtn.textContent = "❌ Disconnect";
+        modeSwitchBtn.style.display = "inline-block";
+        modeSwitchBtn.textContent = selfOperation ? "🎮 Direct Control Mode" : "🤖 Self Operation Mode";
+      }
+    }
 
     // logging
     function log(msg) {
@@ -312,15 +341,18 @@
     }
 
     // send frame
-    async function sendFrameBLE(frame){
-      if(!writeCharacteristic) return;
-      for(let i=0;i<CHUNK_SIZES.length;i++){
-        let offset=CHUNK_OFFSETS[i], count=CHUNK_SIZES[i];
-        let start=offset*3, end=start+count*3;
-        let rgbChunk=frame.slice(start,end);
-        let trigger=(i===CHUNK_SIZES.length-1)?1:0;
-        let packet=[1,trigger,offset,count,...rgbChunk];
-        await writeCharacteristic.writeValue(new Uint8Array(packet));
+    async function sendFrameBLE(frame) {
+      if (!writeCharacteristic || selfOperation) return;
+
+      for (let i = 0; i < CHUNK_SIZES.length; i++) {
+        let offset = CHUNK_OFFSETS[i];
+        let count = CHUNK_SIZES[i];
+        let start = offset * 3;
+        let end = start + count * 3;
+        let rgbChunk = frame.slice(start, end);
+        let trigger = (i === CHUNK_SIZES.length - 1) ? 1 : 0;
+        let packet = new Uint8Array([1, trigger, offset, count, ...rgbChunk]);
+        await enqueueBLEWrite(packet);  // now safely serialized
       }
     }
 
@@ -372,8 +404,8 @@
     }
 
     // BLE connect
-    document.getElementById("connect").addEventListener("click",async()=>{
-      try{
+    async function connectDevice() {
+      try {
         log("Requesting device...");
         device=await navigator.bluetooth.requestDevice({filters:[{services:[SERVICE_UUID]}]});
         log("Connecting...");
@@ -381,23 +413,64 @@
         const service=await server.getPrimaryService(SERVICE_UUID);
         writeCharacteristic=await service.getCharacteristic(WRITE_CHAR_UUID);
         readCharacteristic=await service.getCharacteristic(READ_CHAR_UUID);
-
         await readCharacteristic.startNotifications();
         readCharacteristic.addEventListener("characteristicvaluechanged",e=>{
           const bytes=new Uint8Array(e.target.value.buffer);
           log("Notification: "+Array.from(bytes).map(b=>b.toString(16).padStart(2,"0")).join(" "));
         });
-
-        log("✅ Connected. Starting effects...");
         running=false;
-        runEffects();
-      }catch(err){ log("Error: "+err); }
+      } catch (err) {
+        log("Error during connect: " + err);
+        throw err;
+      }
+    }
+
+    async function disconnectDevice() {
+      if (device&&device.gatt.connected&&writeCharacteristic?.service?.device?.gatt?.connected) {
+        writeCharacteristic.service.device.gatt.disconnect();
+        log("❌ Disconnected.");
+      }
+      writeCharacteristic = null;
+    }
+    
+    connectBtn.addEventListener("click", async () => {
+      if (!connected) {
+        try {
+          await connectDevice(); // your existing connection logic
+          connected = true;
+          updateButtons();
+          log("✅ Connected. Starting effects...");
+          runEffects();
+        } catch (err) {
+          log("❌ Connection failed: " + err);
+        }
+      } else {
+        await disconnectDevice(); // your existing disconnect logic
+        connected = false;
+        updateButtons();
+        running = false;
+      }
     });
 
-    document.getElementById("disconnect").addEventListener("click",()=>{
-      if(device&&device.gatt.connected) device.gatt.disconnect();
-      log("❌ Disconnected."); running=false;
+    modeSwitchBtn.addEventListener("click", async () => {
+      selfOperation = !selfOperation;
+      updateButtons();
+
+      if (writeCharacteristic) {
+        const cmd = new Uint8Array(selfOperation ? [0x00, 0x01] : [0x00, 0x00]);
+        await enqueueBLEWrite(cmd);  // also serialized
+        log("Sent mode switch command: " + Array.from(cmd).map(x=>x.toString(16).padStart(2,"0")).join(" "));
+      } else {
+        log("Not connected, cannot send mode command.");
+      }
     });
+
+    // Prevent pinch-zoom on iOS Safari
+    document.addEventListener('touchmove', function(event) {
+      if (event.scale !== 1) { event.preventDefault(); } // block pinch
+    }, { passive: false });
+    
+    updateButtons();
   </script>
 </body>
 </html>

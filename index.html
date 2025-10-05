@@ -1,136 +1,199 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>LED Controller BLE</title>
   <style>
     body {
-      font-family: monospace;
-      background: #111;
-      color: #eee;
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background: #121212;
+      color: #f0f0f0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
       padding: 20px;
     }
-    #log {
-      background: #222;
-      border: 1px solid #444;
-      padding: 10px;
-      height: 200px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      margin-top: 10px;
+    h1 {
+      margin-bottom: 10px;
+      font-weight: 500;
+      color: #00d4ff;
     }
-    button, select, input[type=color] {
-      background: #444;
-      color: #eee;
-      padding: 8px 12px;
-      border: none;
-      cursor: pointer;
-      margin: 5px 0;
+    .controls { display: flex; gap: 10px; margin-bottom: 20px; }
+    button {
+      background: #1e1e1e; border: 1px solid #333;
+      border-radius: 8px; padding: 10px 16px;
+      color: #eee; font-size: 14px;
+      cursor: pointer; transition: all 0.2s;
     }
-    button:hover, select:hover, input[type=color]:hover {
-      background: #666;
-    }
-    canvas {
+    button:hover { background: #333; }
+    #carousel {
+      width: 300px; height: 400px; position: relative;
+      overflow: hidden; border-radius: 12px; border: 1px solid #333;
       background: #000;
-      display: block;
-      margin: 10px 0;
-      border: 1px solid #333;
     }
+    .slides { display: flex; transition: transform 0.4s ease; height: 100%; }
+    .slide { min-width: 300px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    canvas { background: #000; border-radius: 8px; border: 1px solid #333; }
+    #log {
+      margin-top: 20px; background: #1e1e1e;
+      padding: 10px; border-radius: 8px;
+      width: 90%; max-width: 600px; height: 150px;
+      overflow-y: auto; font-family: monospace; font-size: 13px; border: 1px solid #333;
+    }
+    .nav { margin-top: 10px; display: flex; justify-content: center; gap: 20px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: #555; cursor: pointer; }
+    .dot.active { background: #00d4ff; }
   </style>
 </head>
 <body>
-  <button id="connect">Connect to Device</button>
-  <select id="effect">
-    <option value="rainbow">🌈 Rainbow</option>
-    <option value="chase">🌊 Theater Chase</option>
-    <option value="solid">💡 Solid Color</option>
-  </select>
-  <input type="color" id="colorPicker" value="#ff0000" style="display:none;">
-  <canvas id="preview" width="512" height="50"></canvas>
+  <h1>LED Controller BLE</h1>
+  <div class="controls">
+    <button id="connect">🔗 Connect</button>
+    <button id="disconnect">❌ Disconnect</button>
+  </div>
+
+  <div id="carousel">
+    <div class="slides">
+      <div class="slide"><canvas id="rainbow" width="80" height="256"></canvas><p>🌈 Rainbow</p></div>
+      <div class="slide"><canvas id="chase" width="80" height="256"></canvas><p>🌊 Theater Chase</p></div>
+      <div class="slide"><canvas id="solid" width="80" height="256"></canvas><p>💡 Solid Color</p></div>
+      <div class="slide"><canvas id="fire" width="80" height="256"></canvas><p>🔥 Fire Flicker</p></div>
+      <div class="slide"><canvas id="twinkle" width="80" height="256"></canvas><p>❄️ Twinkle</p></div>
+      <div class="slide"><canvas id="strobe" width="80" height="256"></canvas><p>⚡ Strobe</p></div>
+      <div class="slide"><canvas id="gradient" width="80" height="256"></canvas><p>🎨 Gradient</p></div>
+    </div>
+  </div>
+  <div class="nav"></div>
+
   <div id="log"></div>
 
   <script>
     const SERVICE_UUID = "5f980001-011a-4d81-840f-619f447ae9d0";
     const WRITE_CHAR_UUID = "5f980002-011a-4d81-840f-619f447ae9d0";
-    const READ_CHAR_UUID = "5f980003-011a-4d81-840f-619f447ae9d0";
+    const READ_CHAR_UUID  = "5f980003-011a-4d81-840f-619f447ae9d0";
     const NUM_LEDS = 256;
+    const WIDTH = 8, HEIGHT = 32; // matrix layout
     const CHUNK_SIZES = [80, 80, 80, 16];
     const CHUNK_OFFSETS = [0, 80, 160, 240];
 
-    let writeCharacteristic;
-    let readCharacteristic;
+    let writeCharacteristic, readCharacteristic, device, server;
     let running = false;
+    let currentEffectIndex = 0;
+    const slides = document.querySelector(".slides");
+    const nav = document.querySelector(".nav");
+    const effects = ["rainbow","chase","solid","fire","twinkle","strobe","gradient"];
 
-    // --- Logging helper ---
     function log(msg) {
-      const logDiv = document.getElementById("log");
-      logDiv.textContent += msg + "\n";
-      logDiv.scrollTop = logDiv.scrollHeight;
-      console.log(msg);
+      const div = document.getElementById("log");
+      div.textContent += msg + "\n";
+      div.scrollTop = div.scrollHeight;
     }
 
-    // --- Color helpers ---
-    function hsvToRgb(h, s, v) {
-      let i = Math.floor(h * 6);
-      let f = h * 6 - i;
-      let p = v * (1 - s);
-      let q = v * (1 - f * s);
-      let t = v * (1 - (1 - f) * s);
-      let r, g, b;
-      switch (i % 6) {
-        case 0: r = v; g = t; b = p; break;
-        case 1: r = q; g = v; b = p; break;
-        case 2: r = p; g = v; b = t; break;
-        case 3: r = p; g = q; b = v; break;
-        case 4: r = t; g = p; b = v; break;
-        case 5: r = v; g = p; b = q; break;
+    function hsvToRgb(h,s,v){
+      let i=Math.floor(h*6);
+      let f=h*6-i;
+      let p=v*(1-s);
+      let q=v*(1-f*s);
+      let t=v*(1-(1-f)*s);
+      let r,g,b;
+      switch(i%6){
+        case 0:r=v,g=t,b=p;break;
+        case 1:r=q,g=v,b=p;break;
+        case 2:r=p,g=v,b=t;break;
+        case 3:r=p,g=q,b=v;break;
+        case 4:r=t,g=p,b=v;break;
+        case 5:r=v,g=p,b=q;break;
       }
-      return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+      return [Math.round(r*255),Math.round(g*255),Math.round(b*255)];
     }
 
-    // --- Effect Generators ---
-    function createRainbowFrame(shift) {
-      let frame = [];
-      for (let i = 0; i < NUM_LEDS; i++) {
-        let hue = ((i + shift) % NUM_LEDS) / NUM_LEDS;
-        frame.push(...hsvToRgb(hue, 1.0, 1.0));
+    // --- effect frames ---
+    function frameRainbow(shift){
+      let frame=[];
+      for(let i=0;i<NUM_LEDS;i++){
+        let hue=((i+shift)%NUM_LEDS)/NUM_LEDS;
+        frame.push(...hsvToRgb(hue,1,1));
       }
       return frame;
     }
-
-    function createChaseFrame(shift) {
-      let frame = [];
-      for (let i = 0; i < NUM_LEDS; i++) {
-        if ((i + shift) % 10 < 3) {
-          frame.push(255, 255, 255);
-        } else {
-          frame.push(0, 0, 0);
+    function frameChase(shift){
+      let frame=[];
+      for(let i=0;i<NUM_LEDS;i++){
+        if((i+shift)%10<3) frame.push(255,255,255);
+        else frame.push(0,0,0);
+      }
+      return frame;
+    }
+    function frameSolid(color=[0,128,255]){
+      return Array(NUM_LEDS).fill().flatMap(()=>color);
+    }
+    function frameFire(t){
+      let frame=[];
+      for(let y=0;y<HEIGHT;y++){
+        for(let x=0;x<WIDTH;x++){
+          let idx=y*WIDTH+x;
+          let intensity=Math.floor(
+            128+128*Math.sin((t/10)+(y/3)+(x/2))
+          );
+          let r=intensity, g=Math.floor(intensity*0.4), b=0;
+          frame.push(r,g,b);
+        }
+      }
+      return frame;
+    }
+    function frameTwinkle(){
+      let frame=[];
+      for(let i=0;i<NUM_LEDS;i++){
+        if(Math.random()<0.05) frame.push(255,255,255);
+        else frame.push(0,0,20);
+      }
+      return frame;
+    }
+    function frameStrobe(on){
+      let frame=[];
+      for(let i=0;i<NUM_LEDS;i++){
+        if(on) frame.push(255,255,255);
+        else frame.push(0,0,0);
+      }
+      return frame;
+    }
+    function frameGradient(shift){
+      let frame=[];
+      for(let y=0;y<HEIGHT;y++){
+        for(let x=0;x<WIDTH;x++){
+          let r=Math.floor(255*(x/WIDTH));
+          let b=Math.floor(255*(y/HEIGHT));
+          let g=(shift*5)%255;
+          frame.push(r,g,b);
         }
       }
       return frame;
     }
 
-    function createSolidFrame(colorHex) {
-      let rgb = hexToRgb(colorHex);
-      let frame = [];
-      for (let i = 0; i < NUM_LEDS; i++) {
-        frame.push(rgb.r, rgb.g, rgb.b);
+    // --- drawing matrix (8×32) ---
+    function drawFrame(canvasId, frame){
+      let canvas=document.getElementById(canvasId);
+      if(!canvas) return;
+      let ctx=canvas.getContext("2d");
+      let cellW=canvas.width/WIDTH;
+      let cellH=canvas.height/HEIGHT;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      for(let y=0;y<HEIGHT;y++){
+        for(let x=0;x<WIDTH;x++){
+          let idx=(y*WIDTH+x)*3;
+          let r=frame[idx], g=frame[idx+1], b=frame[idx+2];
+          ctx.fillStyle=`rgb(${r},${g},${b})`;
+          ctx.fillRect(x*cellW,y*cellH,cellW,cellH);
+        }
       }
-      return frame;
     }
 
-    function hexToRgb(hex) {
-      let bigint = parseInt(hex.slice(1), 16);
-      return {
-        r: (bigint >> 16) & 255,
-        g: (bigint >> 8) & 255,
-        b: bigint & 255
-      };
-    }
-
-    // --- Frame Split ---
-    function splitFrame(frame) {
-      let packets = [];
-      for (let i = 0; i < CHUNK_SIZES.length; i++) {
+    // --- BLE send ---
+    async function sendFrameBLE(frame) {
+      if (!writeCharacteristic) return;
+      for (let i=0; i<CHUNK_SIZES.length; i++) {
         let offset = CHUNK_OFFSETS[i];
         let count = CHUNK_SIZES[i];
         let start = offset * 3;
@@ -138,90 +201,86 @@
         let rgbChunk = frame.slice(start, end);
         let trigger = (i === CHUNK_SIZES.length - 1) ? 1 : 0;
         let packet = [1, trigger, offset, count, ...rgbChunk];
-        packets.push(new Uint8Array(packet));
-      }
-      return packets;
-    }
-
-    // --- Visualization ---
-    function drawPreview(frame) {
-      let canvas = document.getElementById("preview");
-      let ctx = canvas.getContext("2d");
-      let w = canvas.width / NUM_LEDS;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      for (let i = 0; i < NUM_LEDS; i++) {
-        ctx.fillStyle = `rgb(${frame[i*3]}, ${frame[i*3+1]}, ${frame[i*3+2]})`;
-        ctx.fillRect(i * w, 0, w, canvas.height);
+        await writeCharacteristic.writeValue(new Uint8Array(packet));
       }
     }
 
-    // --- Loop ---
-    async function runEffectLoop(effect) {
-      let shift = 0;
-      running = true;
-      while (running) {
-        let frame;
-        if (effect === "rainbow") {
-          frame = createRainbowFrame(shift);
-        } else if (effect === "chase") {
-          frame = createChaseFrame(shift);
-        } else if (effect === "solid") {
-          frame = createSolidFrame(document.getElementById("colorPicker").value);
-        }
-        drawPreview(frame);
-
-        if (writeCharacteristic) {
-          let packets = splitFrame(frame);
-          for (let pkt of packets) {
-            await writeCharacteristic.writeValue(pkt);
-          }
-        }
-
-        shift = (shift + 1) % NUM_LEDS;
-        await new Promise(r => setTimeout(r, 100));
-      }
+    // --- carousel nav ---
+    function updateCarousel(){
+      slides.style.transform=`translateX(-${currentEffectIndex*300}px)`;
+      document.querySelectorAll(".dot").forEach((d,i)=>d.classList.toggle("active",i===currentEffectIndex));
     }
-
-    // --- UI ---
-    document.getElementById("effect").addEventListener("change", (e) => {
-      if (e.target.value === "solid") {
-        document.getElementById("colorPicker").style.display = "inline";
-      } else {
-        document.getElementById("colorPicker").style.display = "none";
-      }
-      running = false;
-      setTimeout(() => runEffectLoop(e.target.value), 200);
+    effects.forEach((e,i)=>{
+      let dot=document.createElement("div");
+      dot.classList.add("dot");
+      if(i===0) dot.classList.add("active");
+      dot.addEventListener("click",()=>{currentEffectIndex=i;updateCarousel();});
+      nav.appendChild(dot);
     });
 
-    document.getElementById("connect").addEventListener("click", async () => {
+    let startX=0;
+    slides.addEventListener("touchstart",e=>startX=e.touches[0].clientX);
+    slides.addEventListener("touchend",e=>{
+      let dx=e.changedTouches[0].clientX-startX;
+      if(dx>50 && currentEffectIndex>0) currentEffectIndex--;
+      if(dx<-50 && currentEffectIndex<effects.length-1) currentEffectIndex++;
+      updateCarousel();
+    });
+
+    // --- effect loop ---
+    async function runEffects(){
+      let shift=0,on=true;
+      running=true;
+      while(running){
+        let f=effects[currentEffectIndex];
+        let frame;
+        switch(f){
+          case "rainbow": frame=frameRainbow(shift); break;
+          case "chase": frame=frameChase(shift); break;
+          case "solid": frame=frameSolid(); break;
+          case "fire": frame=frameFire(shift); break;
+          case "twinkle": frame=frameTwinkle(); break;
+          case "strobe": frame=frameStrobe(on); on=!on; break;
+          case "gradient": frame=frameGradient(shift); break;
+        }
+        drawFrame(f,frame);
+        await sendFrameBLE(frame);
+        shift++;
+        await new Promise(r=>setTimeout(r,100));
+      }
+    }
+
+    // --- BLE connect/disconnect ---
+    document.getElementById("connect").addEventListener("click",async()=>{
       try {
         log("Requesting device...");
-        const device = await navigator.bluetooth.requestDevice({
+        device = await navigator.bluetooth.requestDevice({
           filters: [{ services: [SERVICE_UUID] }]
         });
-
         log("Connecting...");
-        const server = await device.gatt.connect();
-
-        log("Getting service...");
+        server = await device.gatt.connect();
         const service = await server.getPrimaryService(SERVICE_UUID);
-
-        log("Getting characteristics...");
         writeCharacteristic = await service.getCharacteristic(WRITE_CHAR_UUID);
-        readCharacteristic = await service.getCharacteristic(READ_CHAR_UUID);
+        readCharacteristic  = await service.getCharacteristic(READ_CHAR_UUID);
 
         await readCharacteristic.startNotifications();
-        readCharacteristic.addEventListener("characteristicvaluechanged", (event) => {
-          const value = event.target.value;
-          const bytes = new Uint8Array(value.buffer);
-          log("Notification: " + Array.from(bytes).map(b => b.toString(16).padStart(2,"0")).join(" "));
+        readCharacteristic.addEventListener("characteristicvaluechanged", e=>{
+          const bytes=new Uint8Array(e.target.value.buffer);
+          log("Notification: " + Array.from(bytes).map(b=>b.toString(16).padStart(2,"0")).join(" "));
         });
 
-        log("Connected. Starting default effect (rainbow)...");
-        runEffectLoop("rainbow");
-      } catch (error) {
-        log("Error: " + error);
+        log("✅ Connected. Starting effects...");
+        running=false;
+        runEffects();
+      } catch(err) {
+        log("Error: "+err);
       }
+    });
+
+    document.getElementById("disconnect").addEventListener("click",()=>{
+      if(device && device.gatt.connected) device.gatt.disconnect();
+      log("❌ Disconnected.");
+      running=false;
     });
   </script>
 </body>

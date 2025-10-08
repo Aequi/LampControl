@@ -419,6 +419,15 @@
           log("Notification: "+Array.from(bytes).map(b=>b.toString(16).padStart(2,"0")).join(" "));
         });
         running=false;
+
+        if (writeCharacteristic) {
+          const cmd = new Uint8Array([0x00, 0x00]);
+          await enqueueBLEWrite(cmd);  // also serialized
+          log("Sent mode switch command: " + Array.from(cmd).map(x=>x.toString(16).padStart(2,"0")).join(" "));
+        } else {
+          log("Not connected, cannot send mode command.");
+        }
+
       } catch (err) {
         log("Error during connect: " + err);
         throw err;

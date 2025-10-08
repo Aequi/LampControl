@@ -209,7 +209,7 @@
     function frameRainbow(shift){
       let frame=[];
       for(let i=0;i<NUM_LEDS;i++){
-        let hue=((i+shift)%NUM_LEDS)/NUM_LEDS;
+        let hue=((i+shift*3)%NUM_LEDS)/NUM_LEDS;
         frame.push(...hsvToRgb(hue,1,1));
       }
       return frame;
@@ -483,3 +483,4 @@
   </script>
 </body>
 </html>
+

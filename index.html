@@ -177,7 +177,7 @@
       } else {
         connectBtn.textContent = "❌ Disconnect";
         modeSwitchBtn.style.display = "inline-block";
-        modeSwitchBtn.textContent = selfOperation ? "🎮 Direct Control Mode" : "🤖 Self Operation Mode";
+        modeSwitchBtn.textContent = selfOperation ? "🎮 Direct" : "🤖 File";
       }
     }
 
@@ -394,7 +394,7 @@
           case "strobe": frame=frameStrobe(on); on=!on; break;
           case "gradient": frame=frameGradient(shift); break;
           case "snow": frame=frameSnow(); break;
-          case "rainup": frame=frameRainUp(); break; 
+          case "rainup": frame=frameRainUp(); break;
         }
         drawFrame(f,frame);
         await sendFrameBLE(frame);
@@ -432,7 +432,7 @@
       }
       writeCharacteristic = null;
     }
-    
+
     connectBtn.addEventListener("click", async () => {
       if (!connected) {
         try {
@@ -469,7 +469,7 @@
     document.addEventListener('touchmove', function(event) {
       if (event.scale !== 1) { event.preventDefault(); } // block pinch
     }, { passive: false });
-    
+
     updateButtons();
   </script>
 </body>
